@@ -1,0 +1,105 @@
+name: Build OpenWrt for BeeconMini SEED AC1 (With PR Patch)
+
+on:
+  workflow_dispatch: # 支持在 Actions 页面手动点击触发
+  push:
+    branches:
+      - main
+
+env:
+  REPO_URL: https://github.com/openwrt/openwrt # 使用官方主线源码
+  REPO_BRANCH: master
+  CONFIG_FILE: seed-ac1.config
+  TZ: Asia/Shanghai
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: 检查当前仓库代码
+      uses: actions/checkout@v4
+
+    - name: 初始化编译环境
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/powershell /usr/share/swift /frameworks
+        sudo -E apt-get -qq update
+        sudo -E apt-get -qq install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libreadline-dev libssl-dev libtool lrzsz mkisofs msmtp nano p7zip p7zip-full patch pkgconf python3 python3-pip python3-ply python3-docutils qemu-utils rsync scons squashfs-tools subversion swig texinfo u-boot-tools upx-ucl unzip xlsx2csv xmlto xz-utils zlib1g-dev lib32gcc-s1 libc6-dev-i386
+        sudo -E apt-get -qq autoremove --purge
+        sudo -E apt-get -qq clean
+        sudo timedatectl set-timezone "$TZ"
+        sudo mkdir -p /workdir
+        sudo chown $USER:$USER /workdir
+
+    - name: 克隆 OpenWrt 主线源码
+      working-directory: /workdir
+      run: |
+        git clone $REPO_URL -b $REPO_BRANCH openwrt
+        ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
+
+    # ================= 核心修正：合并 PR #22390 补丁 =================
+    - name: 下载并应用 BeeconMini AC1 专属补丁 (PR #22390)
+      run: |
+        cd openwrt
+        # 配置临时 git 用户信息以允许 commit/am 操作
+        git config --global user.email "action@github.com"
+        git config --global user.name "GitHub Action"
+        
+        echo "正在下载 PR #22390 的补丁文件..."
+        curl -fsSL https://github.com/openwrt/openwrt/pull/22390.patch -o beeconmini.patch
+        
+        echo "正在将补丁应用到当前源码主线..."
+        git am beeconmini.patch || {
+          echo "补丁应用失败，尝试强制应用或使用 git apply..."
+          git am --abort
+          git apply --reject beeconmini.patch
+        }
+    # =================================================================
+
+    - name: 更新并安装 Feeds 扩展包
+      run: |
+        cd openwrt
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+
+    - name: 注入并应用自定义配置 (.config)
+      run: |
+        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
+        cd openwrt
+        # 使用 defconfig 补全由于引入新设备带来的依赖项
+        make defconfig
+
+    - name: 下载编译所需的源码包 (Make Download)
+      run: |
+        cd openwrt
+        make download -j8
+        find dl -size -1024c -exec ls -l {} \;
+        find dl -size -1024c -exec rm -f {} \;
+
+    - name: 核心编译阶段
+      id: compile
+      run: |
+        cd openwrt
+        echo -e "$(nproc) thread compile"
+        # 考虑到新设备适配可能有潜在冲突，先尝试多线程，失败则自动切换为单线程并输出详细日志
+        make -j$(nproc) || make -j1 V=s
+        echo "status=success" >> $GITHUB_OUTPUT
+
+    - name: 整理编译产物
+      id: organize
+      if: steps.compile.outputs.status == 'success' && !cancelled()
+      run: |
+        cd openwrt/bin/targets/mediatek/filogic
+        # 移除零散的包，只保留固件镜像文件
+        rm -rf packages
+        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+        echo "status=success" >> $GITHUB_OUTPUT
+
+    - name: 上传固件至 GitHub Artifacts
+      uses: actions/upload-artifact@v4
+      if: steps.organize.outputs.status == 'success' && !cancelled()
+      with:
+        name: OpenWrt_BeeconMini_PR22390_Firmware
+        path: ${{ env:FIRMWARE }}
