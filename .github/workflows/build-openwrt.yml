@@ -1,4 +1,4 @@
-name: Build OpenWrt for BeeconMini SEED AC1 (With PR Patch)
+name: Build OpenWrt for BeeconMini SEED AC1
 
 on:
   workflow_dispatch: # 支持在 Actions 页面手动点击触发
@@ -115,5 +115,33 @@ jobs:
       uses: actions/upload-artifact@v4
       if: steps.organize.outputs.status == 'success' && !cancelled()
       with:
-        name: OpenWrt_BeeconMini_PR22390_Firmware
+        name: OpenWrt_BeeconMini_Seed_AC1
         path: ${{ env.FIRMWARE }}
+
+  # ================= 核心：自动发布到 Releases =================
+    - name: 自动生成 Release 标签与时间戳
+      id: tag
+      if: steps.compile.outputs.status == 'success' && !cancelled()
+      run: |
+        # 生成带日期的专属标签，例如：2026.06.11-BeeconMini
+        echo "release_tag=$(date +"%Y.%m.%d")-BeeconMini" >> $GITHUB_OUTPUT
+        echo "status=success" >> $GITHUB_OUTPUT
+
+    - name: 将固件发布至 GitHub Releases
+      uses: softprops/action-gh-release@v2
+      if: steps.tag.outputs.status == 'success' && !cancelled()
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # 必须使用 GitHub 默认自带的 Token
+      with:
+        tag_name: ${{ steps.tag.outputs.release_tag }}
+        body: |
+          ### 🚀 BeeconMini SEED AC1 专属固件发布
+          
+          **编译完成时间：** ${{ env.DATE_TIME }} (北京时间)
+          **源码分支：** `ttc0419:beeconmini/seed-ac1`
+          
+          #### 💾 固件刷机说明：
+          * 如果是第一次从原厂固件刷入，请使用 `*factory.bin` 固件。
+          * 如果已经是 OpenWrt 系统，请在后台选择 `*sysupgrade.bin` 固件升级。
+        # 核心：告诉 Action 去刚才整理好的绝对路径下抓取所有的 bin 文件上传
+        files: ${{ env.FIRMWARE }}/*.bin
