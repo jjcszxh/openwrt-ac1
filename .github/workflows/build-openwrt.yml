@@ -112,13 +112,26 @@ jobs:
         echo "status=success" >> $GITHUB_OUTPUT
 
   # ================= 核心：自动发布到 Releases =================
-    - name: 自动生成 Release 标签与时间戳
-      id: tag
+    - name: 自动生成 Release 状态与提取最近3次提交日志
+      id: release_info
       if: steps.compile.outputs.status == 'success' && !cancelled()
       run: |
-        # 生成带日期的专属标签，例如：2026.06.11-BeeconMini
+        # 1. 生成带日期的专属标签，例如：2026.06.15-BeeconMini
         echo "release_tag=$(date +"%Y.%m.%d")-BeeconMini" >> $GITHUB_OUTPUT
         echo "status=success" >> $GITHUB_OUTPUT
+        
+        # 2. 核心：使用 git log 提取最近 3 次提交信息
+        # %h: 缩短的 commit hash
+        # %s: 提交时的注释内容
+        echo "提取最近3次 Git 提交日志..."
+        
+        # 必须确保拉取了足够的历史记录（如果之前用了 fetch-depth: 1，这里可能需要拉取历史，但 Actions 默认运行在工作区，我们可以直接读 log）
+        git log -n 3 --pretty=format:"* [%h](https://github.com/${{ github.repository }}/commit/%H) - %s" > release_changelog.txt
+        
+        # 将多行文本安全地写入到 GitHub Actions 的环境变量中（处理多行文本的专用写法）
+        echo "CHANGELOG<<EOF" >> $GITHUB_ENV
+        cat release_changelog.txt >> $GITHUB_ENV
+        echo "EOF" >> $GITHUB_ENV
 
     - name: 将固件发布至 GitHub Releases
       uses: softprops/action-gh-release@v2
@@ -132,6 +145,9 @@ jobs:
           
           **编译完成时间：** ${{ env.DATE_TIME }} (北京时间)
           **源码分支：** `ttc0419:beeconmini/seed-ac1`
+
+          #### 📝 最近 3 次更新日志 (Changelog)：
+          ${{ env.CHANGELOG }}
           
           #### 💾 固件刷机说明：
           * 如果是第一次从原厂固件刷入，请使用 `*factory.bin` 固件。
