@@ -103,6 +103,8 @@ jobs:
     - name: Compile aic8800 IPK
       run: |
         cd openwrt
+        make tools/compile -j$(nproc) V=s || make tools/compile V=s
+        make toolchain/compile -j$(nproc) V=s || make toolchain/compile V=s
         make package/aic8800-usb/compile V=s -j$(nproc)
 
   # 新增步骤 3：收集并单独上传 aic8800 的 ipk 安装包
