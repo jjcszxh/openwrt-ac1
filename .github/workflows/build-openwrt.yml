@@ -7,8 +7,8 @@ on:
       - main
 
 env:
-  REPO_URL: https://github.com/ttc0419/openwrt.git
-  REPO_BRANCH: private
+  REPO_URL: https://github.com/WsWHL/openwrt.git
+  REPO_BRANCH: openwrt-25.12
   CONFIG_FILE: seed-ac1.config
   TZ: Asia/Shanghai
 
