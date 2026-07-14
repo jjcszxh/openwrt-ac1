@@ -1,0 +1,118 @@
+name: Build OpenWrt for openwrt-XR1710G
+
+on:
+  workflow_dispatch: # 支持在 Actions 页面手动点击触发
+  push:
+    branches:
+      - main
+
+env:
+  REPO_URL: https://github.com/jjcszxh/openwrt-XR1710G.git
+  REPO_BRANCH: xr1710g-6.18-integration-test-sync-20260712
+  CONFIG_FILE: xr1710g-6.18-integration-test-sync-20260712.config
+  TZ: Asia/Shanghai
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: 检查当前仓库代码
+      uses: actions/checkout@v4
+
+    - name: 初始化编译环境
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/powershell /usr/share/swift /frameworks
+        sudo -E apt-get -qq update
+        sudo -E apt-get -qq install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libreadline-dev libssl-dev libtool lrzsz mkisofs msmtp nano p7zip p7zip-full patch pkgconf python3 python3-pip python3-ply python3-docutils qemu-utils rsync scons squashfs-tools subversion swig texinfo u-boot-tools upx-ucl unzip xlsx2csv xmlto xz-utils zlib1g-dev lib32gcc-s1 libc6-dev-i386
+        sudo -E apt-get -qq autoremove --purge
+        sudo -E apt-get -qq clean
+        sudo timedatectl set-timezone "$TZ"
+        sudo mkdir -p /workdir
+        sudo chown $USER:$USER /workdir
+
+    - name: 克隆 OpenWrt 主线源码
+      working-directory: /workdir
+      run: |
+        git clone $REPO_URL -b $REPO_BRANCH openwrt
+        ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
+
+    - name: 更新并安装 Feeds 扩展包
+      run: |
+        cd openwrt
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+
+    - name: 下载单个第三方插件源码
+      run: |
+        cd openwrt
+        curl -sSL https://raw.githubusercontent.com/chenmozhijin/turboacc/luci/add_turboacc.sh -o add_turboacc.sh && bash add_turboacc.sh
+        
+        cd package      
+        # 创建一个名为 custom 的文件夹用来存放你自己的插件（可选，方便管理）
+        mkdir -p custom && cd custom
+        
+        git clone https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git
+        git clone https://github.com/Openwrt-Passwall/openwrt-passwall.git
+        git clone https://github.com/linkease/istore
+        git clone https://github.com/stackia/rtp2httpd.git
+        git clone https://github.com/jerrykuku/luci-theme-argon.git
+        git clone https://github.com/EasyTier/luci-app-easytier.git
+        git clone https://github.com/rchen14b/luci-theme-glass.git
+
+
+    - name: 注入并应用自定义配置 (.config)
+      run: |
+        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
+        cd openwrt
+        # 使用 defconfig 补全由于引入新设备带来的依赖项
+        make defconfig
+
+    - name: 下载编译所需的源码包 (Make Download)
+      run: |
+        cd openwrt
+        make download -j8
+        find dl -size -1024c -exec ls -l {} \;
+        find dl -size -1024c -exec rm -f {} \;
+
+    - name: 核心编译阶段
+      id: compile
+      run: |
+        cd openwrt
+        echo -e "$(nproc) thread compile"
+        # 考虑到新设备适配可能有潜在冲突，先尝试多线程，失败则自动切换为单线程并输出详细日志
+        make -j$(nproc) || make -j1 V=s
+        
+        # 移除零散的包，只保留固件镜像文件
+        cd bin/targets/mediatek/filogic
+        rm -rf packages
+        echo "DATE_TIME=$(date +"%Y.%m.%d %H:%M:%S")" >> $GITHUB_ENV
+        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+        echo "status=success" >> $GITHUB_OUTPUT
+
+  # ================= 核心：自动发布到 Releases =================
+    - name: 自动生成 Release 标签与时间戳
+      id: tag
+      if: steps.compile.outputs.status == 'success' && !cancelled()
+      run: |
+        # 生成带日期的专属标签，例如：2026.06.11-BeeconMini
+        echo "release_tag=$(date +"%Y.%m.%d")-BeeconMini" >> $GITHUB_OUTPUT
+        echo "status=success" >> $GITHUB_OUTPUT
+
+    - name: 将固件发布至 GitHub Releases
+      uses: softprops/action-gh-release@v2
+      if: steps.tag.outputs.status == 'success' && !cancelled()
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # 必须使用 GitHub 默认自带的 Token
+      with:
+        tag_name: ${{ steps.tag.outputs.release_tag }}
+        body: |
+          ### 🚀 BeeconMini SEED AC1 专属固件发布                    
+          **编译完成时间：** ${{ env.DATE_TIME }} (北京时间)
+                    
+          #### 💾 固件刷机说明：
+          * 如果是第一次从原厂固件刷入，请使用 `*factory.bin` 固件。
+          * 如果已经是 OpenWrt 系统，请在后台选择 `*sysupgrade.bin` 固件升级。
+        files: ${{ env.FIRMWARE }}/openwrt-*.bin
