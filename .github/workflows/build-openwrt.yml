@@ -54,9 +54,9 @@ jobs:
         # 创建一个名为 custom 的文件夹用来存放你自己的插件（可选，方便管理）
         mkdir -p custom && cd custom
         
-        git clone https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git;main
-        git clone https://github.com/Openwrt-Passwall/openwrt-passwall.git;main
-        git clone https://github.com/linkease/istore;main
+        git clone https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git
+        git clone https://github.com/Openwrt-Passwall/openwrt-passwall.git
+        git clone https://github.com/linkease/istore
         git clone https://github.com/stackia/rtp2httpd.git
         git clone https://github.com/jerrykuku/luci-theme-argon.git
         git clone https://github.com/EasyTier/luci-app-easytier.git
