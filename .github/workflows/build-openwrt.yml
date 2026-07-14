@@ -54,14 +54,14 @@ jobs:
         # 创建一个名为 custom 的文件夹用来存放你自己的插件（可选，方便管理）
         mkdir -p custom && cd custom
         
+        git clone https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git;main
+        git clone https://github.com/Openwrt-Passwall/openwrt-passwall.git;main
+        git clone https://github.com/linkease/istore;main
+        git clone https://github.com/stackia/rtp2httpd.git
         git clone https://github.com/jerrykuku/luci-theme-argon.git
-        git clone https://github.com/jerrykuku/luci-app-argon-config.git
-        git clone https://github.com/Tokisaki-Galaxy/luci-app-2fa.git
-        git clone https://github.com/rufengsuixing/luci-app-adguardhome.git
+        git clone https://github.com/EasyTier/luci-app-easytier.git
         
-        git clone --depth 1 https://github.com/vernesong/openclash.git
-        mv openclash/luci-app-openclash/ ./
-        rm -rf openclash
+
 
     - name: 注入并应用自定义配置 (.config)
       run: |
