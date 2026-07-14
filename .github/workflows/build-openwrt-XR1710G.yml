@@ -8,7 +8,7 @@ on:
 
 env:
   REPO_URL: https://github.com/jjcszxh/openwrt-XR1710G.git
-  REPO_BRANCH: xr1710g-6.18-integration-test-sync-20260712
+  REPO_BRANCH: xr1710g-6.18-integration-test-sync-20260714
   CONFIG_FILE: xr1710g-6.18-integration-test-sync-20260712.config
   TZ: Asia/Shanghai
 
